@@ -42,7 +42,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private ExecutorService cameraExecutor;
     private HandLandmarker handLandmarker;
     private SensorManager sensorManager;
-    private float yaw = 0, pitch = 0, roll = 0;
+    private float yaw = 0, pitch = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -82,7 +82,15 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         cameraExecutor = Executors.newSingleThreadExecutor();
-        setupHandLandmarker();
+
+        // Инициализация MediaPipe с защитой от вылета
+        try {
+            setupHandLandmarker();
+            Log.i("theXR", "HandLandmarker initialized");
+        } catch (Throwable t) {
+            Log.e("theXR", "MediaPipe init failed", t);
+            Toast.makeText(this, "MediaPipe init failed: " + t.getMessage(), Toast.LENGTH_LONG).show();
+        }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -99,9 +107,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         sensorManager.registerListener(this,
                 sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE),
                 SensorManager.SENSOR_DELAY_GAME);
-        sensorManager.registerListener(this,
-                sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER),
-                SensorManager.SENSOR_DELAY_GAME);
     }
 
     @Override
@@ -115,12 +120,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE) {
             yaw += event.values[0] * 0.01f;
             pitch += event.values[1] * 0.01f;
-            roll += event.values[2] * 0.01f;
-            // Применяем поворот к картинке (имитация 6DOF)
-            leftView.setRotationX(pitch * 50);
             leftView.setRotationY(yaw * 50);
-            rightView.setRotationX(pitch * 50);
+            leftView.setRotationX(pitch * 50);
             rightView.setRotationY(yaw * 50);
+            rightView.setRotationX(pitch * 50);
         }
     }
 
@@ -189,6 +192,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     private void analyzeImage(ImageProxy imageProxy) {
         try {
+            if (handLandmarker == null) {
+                imageProxy.close();
+                return;
+            }
             Bitmap bitmap = Bitmap.createBitmap(
                     imageProxy.getWidth(), imageProxy.getHeight(), Bitmap.Config.ARGB_8888);
             bitmap.copyPixelsFromBuffer(imageProxy.getPlanes()[0].getBuffer());
